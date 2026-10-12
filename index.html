@@ -165,7 +165,7 @@ Object.assign(PORTRAIT,{'蔣萬安':SP.chiang,'主持人':SP.hostP,'阿嬤':SP.g
 /* ================= 關卡模板（9 列＝世界第 8-16 列；第 16 列為地面） =================
  圖塊：# 地面  > 洋流  ? 泡泡方塊  Q 金泡泡方塊  C 甘蔗方塊  B 磚  = 平台  t 違停小貨車  c 三角錐  h 火鍋熱區  M 捷運閘門
  物件：o g 泡泡  f F 假訊息  b 補給  L 燈塔／存檔旗  Z 斑馬線  S 鞭炮煙霧  P 海報  E 終點  N 需求 NPC  1-9 道具  H 舉牌粉撲  x 標籤貼紙
-       D 死貓布偶  V 剪輯影片  O 東發號  r 一星評論雲  J 火鍋攤（蔣萬安）  Y 看板 */
+       D 死貓布偶  V 剪輯影片  O 油飯店  r 一星評論雲  J 火鍋攤（蔣萬安）  Y 看板 */
 const TPL={
  start:["....................","....................","....................","....................","....................","..........o.o.o.....","....................","....................","####################"],
  flat:["....................","....................","....................","....................","....................","....o.o.o...........","....................","....................","####################"],
@@ -262,7 +262,7 @@ const LV=[
  ['enemy',0],['qblk',0],['cat',0],['curpit',0],['flyers',0],['light',0],
  ['pit',1],['enemy2',1],['plat',1],['cur',1],['enemy',1],['light',1],
  ['flat',2,[['hint',kb('前面有一段被剪過的影片：用浪花「查證」，倒帶看完整版')]]],['video',2],['stairs',2],['enemy',2],['light',2],
- ['flat',3],['shop',3,[['hint',kb('東發號門口飄滿一星評論雲：用浪花清掉')]]],['cur',3],['goal',3]]},
+ ['flat',3],['shop',3,[['hint',kb('油飯店門口飄滿一星評論雲：用浪花清掉')]]],['cur',3],['goal',3]]},
  {title:'暖流穿越',area:'大安・文山 → 松山信義',cp:'flag',goal:'xinyi',goalName:'往市府廣場',
   zones:[['大安森林公園','daan'],['師大・公館','shida'],['文山河堤','wenshan'],['松山信義','xinyi']],
   quote:['「洋流是溫暖的。」','— 沈伯洋（公開發言，節錄）'],
@@ -488,10 +488,10 @@ function update(dt){
   for(const c of G.cats){if(c.st==='sleep'&&pcx>c.x-92){c.st='pop';c.t=0;SFX.bonk();toast('「看這邊！」貓咪布偶跳出來，大家的注意力都被吸走了','warn',2.6);hint(kb('用浪花（J／X）輕點布偶，貼上「轉移焦點」標籤','用浪花（B）輕點布偶，貼上「轉移焦點」標籤'));}if(c.st!=='sleep')c.t+=dt;}
   // 剪輯影片
   for(const v of G.videos){if(!v.on&&pcx>v.x-100)v.on=1;}
-  // 一星評論雲／東發號
+  // 一星評論雲／油飯店
   for(const cl of G.clouds){if(!cl.dead){cl.t+=dt;cl.y=cl.by+Math.sin(cl.t*1.5)*3;}}
   for(const sh of G.shops){if(sh.done)continue;const mine=G.clouds.filter(c=>Math.abs(c.x-sh.x)<160);if(mine.length&&mine.every(c=>c.dead)){sh.done=1;G.shopDone=1;G.hp=3;addWave(15);SFX.badge();
-    G.parts.push({x:sh.x,y:sh.y-30,vx:0,vy:-60,t:0,life:1.2,ico:'rice'});say('沈伯洋','「店家的牆不需變戰場」',3.2,'公開發言');toast('東發號送上一碗油飯：救生圈全滿！','item',2.6);}}
+    G.parts.push({x:sh.x,y:sh.y-30,vx:0,vy:-60,t:0,life:1.2,ico:'rice'});say('沈伯洋','「店家的牆不需變戰場」',3.2,'公開發言');toast('油飯店送上一碗油飯：救生圈全滿！','item',2.6);}}
   // 火鍋攤（蔣萬安，只說公開發言）
   for(const st of G.stalls){if(!st.said&&pcx>st.x-74){st.said=1;say('蔣萬安','「火鍋是有料的，醬料加酸也尊重」',3.8,'公開發言');say('沈伯洋','「洋流是溫暖的。」',2.8,'公開發言・節錄');G.sauce=1;
     setTimeout(()=>{if(G)toast('獲得「尊重醬料」徽章：選舉有輸贏，台北只有一個','badge',3);},10);}}
@@ -840,7 +840,7 @@ const ZSHORT=z=>{const s=z[0].split('・').pop();return s.length>5?s.slice(0,4):
 function objLines(){const g=G;switch(g.li){
   case 0:return['目標：前往大龍峒保安宮','政見燈塔 '+g.lit+'/5　禮讓徽章 '+g.badges+'/2'];
   case 1:return['目標：前往總部晚會舞台','青年需求 '+g.youth+'/3　撕掉標籤 '+g.peeled+'　洋流旗 '+g.lit+'/3'];
-  case 2:return['目標：前往饒河夜市','查證 '+g.checks+'/2　東發號 '+(g.shopDone?'✓':'—')+'　洋流旗 '+g.lit+'/3'];
+  case 2:return['目標：前往饒河夜市','查證 '+g.checks+'/2　油飯店 '+(g.shopDone?'✓':'—')+'　洋流旗 '+g.lit+'/3'];
   case 3:return['目標：前往市府廣場','說服 '+g.persuaded+'/6　火鍋降溫 '+g.cooled+' 格'+(g.sauce?'　尊重醬料 ✓':'')];
   default:return g.mode==='boss'?['讓「再說啦」大霧散去','投票三寶＋車票 '+(g.boss?g.boss.next:0)+'/4']:['交叉詰問','具體提問 '+(g.deb?g.deb.score:0)+' 題'];}}
 function drawUIText(){
@@ -874,7 +874,7 @@ function drawUIText(){
   for(const f of g.fans)if(on(f.x))T_('我不是工讀生',f.x-cam,PY+f.y-29,3.9,'R','center',{stroke:false});
   for(const c of g.cats)if(on(c.x)){if(c.st==='pop')T_('看這邊！',c.x-cam,PY+c.y-30,6.5,Math.floor(S.t*4)%2?'y':'W','center');else if(c.st==='sleep')T_('Zzz',c.x-cam+8,PY+c.y-14-Math.floor(S.t*2)%3,4.5,'W','center');else T_('轉移焦點',c.x-cam,PY+c.y-14,5,'W','center',{sc:PAL.R});}
   for(const v of g.videos)if(on(v.x))T_(v.st==='checked'?'完整版 ✓':'網傳片段',v.x-cam,PY+v.y-24,5.2,v.st==='checked'?'g':'R','center',{sc:PAL.W,sw:1.6});
-  for(const sh of g.shops)if(on(sh.x))T_('東發號',sh.x-cam,PY+sh.y-31,6,'R','center',{stroke:false});
+  for(const sh of g.shops)if(on(sh.x))T_('油飯店',sh.x-cam,PY+sh.y-31,6,'R','center',{stroke:false});
   for(const cl of g.clouds)if(!cl.dead&&on(cl.x))T_('★☆☆☆☆',cl.x-cam,PY+cl.y,3.6,'y','center',{stroke:false});
   for(const st2 of g.stalls)if(on(st2.x))T_('火鍋',st2.x-cam,PY+st2.y-30,4.5,'W','center',{stroke:false});
   for(const bd of g.boards)if(on(bd.x))T_('牛奶市長',bd.x-cam+27,PY+bd.y+7,6.4,'b','center',{stroke:false});
@@ -1023,7 +1023,7 @@ function uiClear(){
   const rows=[['民意泡泡',(g.bub+g.gold)+' 顆'],['打掉假訊息',(g.stomps+g.popped)+' 個']];
   if(g.li===0)rows.push(['政見燈塔',g.lit+' / 5'],['禮讓徽章',g.badges+' / 2'],['機車隊','約 2,000 台']);
   if(g.li===1)rows.push(['青年需求',g.youth+' / 3'],['撕掉「工讀生」標籤',g.peeled+' 次'],['晚會現場','超過 12 萬人（主辦單位稱）']);
-  if(g.li===2)rows.push(['查證成功',g.checks+' / 2'],['東發號一星雲',g.shopDone?'清除 ✓':'未完成'],['資訊霧','散去中']);
+  if(g.li===2)rows.push(['查證成功',g.checks+' / 2'],['油飯店一星雲',g.shopDone?'清除 ✓':'未完成'],['資訊霧','散去中']);
   if(g.li===3)rows.push(['說服中間選民',g.persuaded+' / 6'],['火鍋降溫',g.cooled+' 格'],['尊重醬料徽章',g.sauce?'獲得 ✓':'—']);
   rows.push(['航行時間',fmtT(g.time)]);
   rows.forEach((s,i)=>{const y=92+i*12;T_(s[0],22,y,6.3,'w','left',{stroke:false,w:500});T_(s[1],158,y,s[1].length>8?5.4:6.6,'W','right',{stroke:false});});
