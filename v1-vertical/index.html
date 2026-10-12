@@ -1,0 +1,867 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,minimum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#1B1B2F">
+<link rel="icon" href="data:,">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<title>洋流大冒險｜第 1 關 大洋流首航（試玩原型）</title>
+<style>
+html,body{margin:0;height:100%;overflow:hidden;overscroll-behavior:none;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;-webkit-text-size-adjust:100%}
+body{background:#1B1B2F repeating-linear-gradient(135deg,#1B1B2F 0 16px,#20203a 16px 32px)}
+#wrap{position:fixed;inset:0;box-sizing:border-box;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);display:flex;align-items:center;justify-content:center}
+#area{width:100%;height:100%;display:flex;align-items:center;justify-content:center}
+canvas{display:block;image-rendering:pixelated;image-rendering:crisp-edges;touch-action:none;outline:none;box-shadow:0 0 0 2px #E0620A,0 0 30px rgba(255,140,26,.22)}
+#rot{display:none;position:fixed;inset:0;z-index:9;background:#1B1B2F;color:#FFB347;font:700 18px/1.6 'Noto Sans TC','PingFang TC','Microsoft JhengHei',sans-serif;align-items:center;justify-content:center;text-align:center}
+@media (orientation:landscape) and (pointer:coarse) and (max-height:520px){#rot{display:flex}}
+</style>
+</head>
+<body>
+<div id="wrap"><div id="area"><canvas id="cv" tabindex="0" aria-label="洋流大冒險 第一關"></canvas></div></div>
+<div id="rot">請把手機轉成直式<br>洋流往上流 ↑</div>
+<script>
+(()=>{
+'use strict';
+/* ================= 基本設定 ================= */
+const W=180,H=320,GH=256,PY=176;          // 遊戲層 180x320；遊戲區 0-256；操作甲板 256-320；船在 y=176
+const END=4800;                            // 關卡終點（世界座標，px）
+const START_WAVE=300;                      // 浪潮條內部值 0-1000（不顯示任何數字）
+const PAL={k:'#1B1B2F',D:'#24405E',b:'#3E6A8A',c:'#6FB7C9',w:'#BFE8EE',W:'#FFF4E0',y:'#FFD9A0',l:'#FFB347',o:'#FF8C1A',O:'#E0620A',r:'#A8430A',n:'#5A2E14',g:'#4FA65A',G:'#8A8580',p:'#6B5E7A',R:'#D9483B'};
+const FONT="'Noto Sans TC','Noto Sans CJK TC','PingFang TC','Microsoft JhengHei','Heiti TC',sans-serif";
+const QS=new URLSearchParams(location.search);
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+const buf=document.createElement('canvas');buf.width=W;buf.height=H;const bx=buf.getContext('2d');
+let K=2;           // 整數放大倍率（裝置像素 / 遊戲像素）
+
+/* ================= 工具 ================= */
+const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+function rng(seed){return()=>{seed=seed+0x6D2B79F5|0;let t=Math.imul(seed^seed>>>15,1|seed);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+function hash(a,b){let h=(a*374761393+b*668265263)|0;h=Math.imul(h^(h>>>13),1274126177);return((h^(h>>>16))>>>0)/4294967296;}
+function spr(rows,map){const w=Math.max(...rows.map(r=>r.length)),h=rows.length;const c=document.createElement('canvas');c.width=w;c.height=h;const x=c.getContext('2d');
+  for(let j=0;j<h;j++)for(let i=0;i<w;i++){let ch=rows[j][i]||'.';if(map&&map[ch])ch=map[ch];if(ch!=='.'&&PAL[ch]){x.fillStyle=PAL[ch];x.fillRect(i,j,1,1);}}return c;}
+function R(c,x,y,w,h,col){c.fillStyle=PAL[col]||col;c.fillRect(Math.round(x),Math.round(y),w,h);}
+function fmtT(s){s=Math.max(0,Math.floor(s));return Math.floor(s/60)+':'+String(s%60).padStart(2,'0');}
+
+/* ================= 像素圖（全部以程式字串繪製，原創） ================= */
+const SP={};
+SP.boat=spr([
+"......kkkk......",
+".....knnnnk.....",
+".....knnnnk.....",
+".....kynnyk.....",
+"....kooooook....",
+"...kyooWWooyk...",
+"..kkyooooooykk..",
+".kWWkkkkkkkkWWk.",
+".kWooooooooooWk.",
+".kWoOOOOOOOOoWk.",
+".kWoOllllllOoWk.",
+".kWoOOOOOOOOoWk.",
+"..kWooooooooWk..",
+"...kWWWWWWWWk...",
+"....kkkkkkkk....",
+"................"]);
+SP.bub=spr([
+"..kkkk..",
+".kWllok.",
+"kWlllllk",
+"klllllok",
+"kllllook",
+"kllooOOk",
+".kooOOk.",
+"..kkkk.."]);
+SP.gold=spr([
+"...kkkk...",
+".kkWWyykk.",
+".kWWyyyyk.",
+"kWyyyyyylk",
+"kyyyWWyylk",
+"kyyyWWyylk",
+"kyyyyyyllk",
+".kyyyylllk",
+".kklllllk.",
+"...kkkk..."]);
+SP.fake=spr([
+"....kkkk....",
+"..kkppppkk..",
+".kpGppppppk.",
+".kGppWppWppk",
+"kppppWppWppk",
+"kppppWppWppk",
+"kppppWppWppk",
+"kppppppppppk",
+"kppppWppWppk",
+".kppppppppk.",
+"..kkppppkk..",
+"....kkkk...."]);
+SP.cone=spr([
+"...k...",
+"..kok..",
+"..kWk..",
+".kooOk.",
+".kWWWk.",
+".kooOOk",
+"kkkkkkk"]);
+SP.truck=spr([
+".kkkkkkkkkkkk.",
+"kGGGGGGGGGGGGk",
+"kGccccccccccGk",
+"kGcwccccccccGk",
+"kGGGGGGGGGGGGk",
+"kkkkkkkkkkkkkk",
+"kWWWWWWWWWWWWk",
+"kWGGGGGGGGGGWk",
+"kWGnnnGGnnnGWk",
+"kWGGGGGGGGGGWk",
+"kWGnnnGGnnnGWk",
+"kWGGGGGGGGGGWk",
+"kWWWWWWWWWWWWk",
+"kRkkkkkkkkkkRk",
+".kk........kk."]);
+SP.scoot=spr([
+"...kkkk...",
+"..kHHHHk..",
+"..kHHHHk..",
+"...kyyk...",
+"..kSSSSk..",
+".kySSSSyk.",
+"..kkGGkk..",
+"..kGGGGk..",
+".kkRGGRkk.",
+"..kGGGGk..",
+"...kkkk...",
+"...k..k..."]);
+SP.light0=spr([
+"....kk....",
+"...kOOk...",
+"..kOOOOk..",
+"..kGGGGk..",
+"..kGGGGk..",
+".kkkkkkkk.",
+"..kWWWWk..",
+"..kWWWWk..",
+"..koooOk..",
+"..koooOk..",
+"..kWWWWk..",
+"..kWWWWk..",
+".kooooOOk.",
+".kooooOOk.",
+".kWWWWWWk.",
+".kWWWWWWk.",
+"kGGGGGGGGk",
+"kGGGGGGGGk",
+".kkkkkkkk."]);
+SP.light1=spr([
+"....kk....",
+"...kOOk...",
+"..kOOOOk..",
+"..kWWWWk..",
+"..kWllWk..",
+".kkkkkkkk.",
+"..kWWWWk..",
+"..kWWWWk..",
+"..koooOk..",
+"..koooOk..",
+"..kWWWWk..",
+"..kWWWWk..",
+".kooooOOk.",
+".kooooOOk.",
+".kWWWWWWk.",
+".kWWWWWWk.",
+"kGGGGGGGGk",
+"kGGGGGGGGk",
+".kkkkkkkk."]);
+SP.cane=spr([
+"g.g.g",
+".ggg.",
+"..g..",
+".kpk.",
+".kpk.",
+".kkk.",
+".kpk.",
+".kpk.",
+".kpk.",
+".kkk.",
+".kpk.",
+".kpk.",
+".kpk.",
+".kkk.",
+".kpk.",
+".kkk."]);
+SP.bottle=spr([
+"..kkk..",
+"..kWk..",
+".kkkkk.",
+"kooooOk",
+"kWWooOk",
+"koWWoOk",
+"kooWWOk",
+"kooooOk",
+".kkkkk."]);
+const PED=[
+"..kkkk..",
+".kHHHHk.",
+".kyyyyk.",
+".kykkyk.",
+"..kyyk..",
+".kSSSSk.",
+"kySSSSyk",
+"kySSSSyk",
+".kSSSSk.",
+".kDDDDk.",
+".kDkkDk.",
+".kk..kk."];
+SP.peds=[['n','R'],['k','g'],['G','c'],['n','l']].map(([h,s])=>spr(PED,{H:h,S:s}));
+SP.fan=spr(PED,{H:'o',S:'o'});
+SP.scoots=[['W','o'],['o','W'],['R','l'],['c','o'],['y','O']].map(([h,s])=>spr(SP.scootRows||[
+"...kkkk...","..kHHHHk..","..kHHHHk..","...kyyk...","..kSSSSk..",".kySSSSyk.","..kkGGkk..","..kGGGGk..",".kkRGGRkk.","..kGGGGk..","...kkkk...","...k..k..."],{H:h,S:s}));
+SP.buoy=spr(["..kkkk..",".koWWok.","koWkkWok","kWk..kWk","kWk..kWk","koWkkWok",".koWWok.","..kkkk.."]);
+SP.buoy0=spr(["..kkkk..",".kpGGpk.","kpGkkGpk","kGk..kGk","kGk..kGk","kpGkkGpk",".kpGGpk.","..kkkk.."]);
+SP.badge=spr(["..kkkk..",".kggggk.","kgWggWgk","kgWWWWgk","kggWWggk","kgggggggk".slice(0,8),".kggggk.","..kkkk.."]);
+SP.shen=spr([
+"....kkkkkkkk....",
+"...kkDDkkkkkk...",
+"..kkkkkkkkkkkk..",
+"..kkyyyyyyyykk..",
+"..kyyyyyyyyyyk..",
+".kykkkkyykkkkkyk",
+".kykwwkkkkwwkyk.",
+".kykkkkyykkkkyk.",
+"..kyyyyyyyyyyk..",
+"..kyyyyyyyyyyk..",
+"...kyyrrrryyk...",
+"....kyyyyyyk....",
+"...kkkyyyykkk...",
+".kkoooWyyWoookk.",
+"koooooWWWWoooook",
+"kooooooooooooook"]);
+SP.vendor=spr([
+"....nnnnnnnn....",
+"...nnnnnnnnnn...",
+"..nnnnnnnnnnnn..",
+"..nnyyyyyyyynn..",
+"..nyyyyyyyyyyn..",
+"..kyyyyyyyyyyk..",
+"..kyykkyykkyyk..",
+"..kyyyyyyyyyyk..",
+"..kyRyyyyyyRyk..",
+"..kyyyyyyyyyyk..",
+"...kyyrrrryyk...",
+"....kyyyyyyk....",
+"...kkkyyyykkk...",
+".kkGGGRRRRGGGkk.",
+"kGGGGRRWWRRGGGGk",
+"kGGGGRRRRRRGGGGk"]);
+SP.fanP=spr([
+"....kkkkkkkk....",
+"...kooooooook...",
+"..kooooooooook..",
+".kkkkkkkkkkkkkk.",
+"..knyyyyyyyynk..",
+"..kyyyyyyyyyyk..",
+"..kyykkyykkyyk..",
+"..kyyyyyyyyyyk..",
+"..kyRyyyyyyRyk..",
+"..kyyyrrrryyyk..",
+"...kyyyyyyyyk...",
+"....kyyyyyyk....",
+"...kkkyyyykkk...",
+".kkoooooooooookk",
+"koooooWWWWoooook",
+"kooooooooooooook"]);
+const PORTRAIT={'沈伯洋':SP.shen,'夜市攤商':SP.vendor,'粉撲':SP.fanP};
+
+/* ================= 版面縮放（整數倍＋letterbox＋安全區） ================= */
+function resize(){
+  const area=document.getElementById('area');const r=area.getBoundingClientRect();
+  const dpr=window.devicePixelRatio||1;
+  let k=Math.floor(Math.min(r.width*dpr/W,r.height*dpr/H));
+  if(k<1)k=Math.min(r.width*dpr/W,r.height*dpr/H); // 極小視窗才用非整數
+  K=k;cv.width=Math.round(W*k);cv.height=Math.round(H*k);
+  cv.style.width=(W*k/dpr)+'px';cv.style.height=(H*k/dpr)+'px';
+}
+window.addEventListener('resize',resize);window.addEventListener('orientationchange',()=>setTimeout(resize,200));
+
+/* ================= 音效（WebAudio 程序化，原創） ================= */
+const S={state:'title',paused:false,muted:localStorage.getItem('yl_mute')==='1',touch:matchMedia('(pointer:coarse)').matches||('ontouchstart' in window),t:0,focus:0,bot:QS.get('bot')==='1'};
+let AC=null,MG=null,bgmTimer=null,bgmStep=0,bgmNext=0;
+function audioInit(){
+  if(AC){if(AC.state==='suspended')AC.resume();return;}
+  try{AC=new (window.AudioContext||window.webkitAudioContext)();MG=AC.createGain();MG.gain.value=S.muted?0:0.45;MG.connect(AC.destination);}catch(e){AC=null;}
+}
+function setMute(m){S.muted=m;localStorage.setItem('yl_mute',m?'1':'0');if(MG)MG.gain.value=m?0:0.45;}
+function tone(f,d,type,vol,slide,delay){if(!AC||S.muted)return;const t=AC.currentTime+(delay||0);const o=AC.createOscillator(),g=AC.createGain();o.type=type||'square';o.frequency.setValueAtTime(f,t);if(slide)o.frequency.exponentialRampToValueAtTime(Math.max(40,f+slide),t+d);g.gain.setValueAtTime(vol||.12,t);g.gain.exponentialRampToValueAtTime(.001,t+d);o.connect(g);g.connect(MG);o.start(t);o.stop(t+d+.03);}
+function noise(d,vol,delay){if(!AC||S.muted)return;const t=AC.currentTime+(delay||0);const n=Math.floor(AC.sampleRate*d);const b=AC.createBuffer(1,n,AC.sampleRate);const a=b.getChannelData(0);for(let i=0;i<n;i++)a[i]=(Math.random()*2-1)*(1-i/n);const s=AC.createBufferSource();s.buffer=b;const g=AC.createGain();g.gain.value=vol||.15;s.connect(g);g.connect(MG);s.start(t);}
+const SFX={
+  bubble:()=>tone(880,.07,'square',.06,500),
+  gold:()=>{tone(988,.08,'square',.07);tone(1319,.12,'square',.07,0,.07);},
+  pop:()=>{noise(.08,.12);tone(520,.06,'triangle',.08,-300);},
+  wave:()=>tone(330,.18,'triangle',.12,500),
+  dash:()=>tone(220,.25,'sawtooth',.06,500),
+  hit:()=>{tone(160,.22,'sawtooth',.12,-90);noise(.12,.1);},
+  light:()=>{[523,659,784,1047].forEach((f,i)=>tone(f,.14,'square',.07,0,i*.07));},
+  item:()=>{[659,880,1175].forEach((f,i)=>tone(f,.12,'square',.07,0,i*.06));},
+  badge:()=>{[784,988,1175,1568].forEach((f,i)=>tone(f,.1,'triangle',.1,0,i*.06));},
+  ui:()=>tone(660,.05,'square',.05),
+  clear:()=>{[523,659,784,659,784,1047].forEach((f,i)=>tone(f,.18,'square',.07,0,i*.12));},
+};
+// 原創 chiptune 循環（五聲音階，夜市叫賣節奏感）
+const MEL=[72,0,74,76,79,0,76,74,72,0,69,72,74,0,0,0,76,0,79,81,79,0,76,74,76,0,74,72,69,0,72,0];
+const BAS=[48,0,55,0,52,0,55,0,45,0,52,0,50,0,55,0,48,0,55,0,52,0,55,0,45,0,50,0,43,0,47,0];
+const mf=m=>440*Math.pow(2,(m-69)/12);
+function bgmTick(){
+  if(!AC||S.muted||S.state!=='play'||S.paused)return;
+  const spb=60/132/2;
+  if(bgmNext<AC.currentTime)bgmNext=AC.currentTime+.05;
+  while(bgmNext<AC.currentTime+.25){
+    const d=bgmNext-AC.currentTime,i=bgmStep%32;
+    if(MEL[i])tone(mf(MEL[i]),spb*.9,'square',.035,0,d);
+    if(BAS[i])tone(mf(BAS[i]),spb*1.6,'triangle',.07,0,d);
+    if(i%4===2)noise(.03,.03,d);
+    bgmStep++;bgmNext+=spb;
+  }
+}
+bgmTimer=setInterval(bgmTick,80);
+
+/* ================= 關卡資料 ================= */
+const ZONES=[[0,'北投'],[1050,'士林'],[2150,'中山'],[2950,'大同・寧夏夜市'],[3850,'大同・迪化街'],[4580,'大同・大龍峒保安宮']];
+const zoneAt=wy=>{let z=0;for(let i=0;i<ZONES.length;i++)if(wy>=ZONES[i][0])z=i;return z;};
+const POLICIES=['城市路徑串連','想動有地方動','老房有人來修','夜晚有人協調','長輩有人來陪'];
+const laneX=(l,wy)=>l.x0+(l.x1-l.x0)*clamp((wy-l.y0)/(l.y1-l.y0),0,1);
+function buildLevel(){
+  const r=rng(20261011);
+  const L={lanes:[],bubbles:[],obst:[],fakes:[],items:[],lights:[],cross:[],smokes:[],events:[]};
+  [[340,700,90,90],[780,1130,62,112],[1200,1540,118,72],[1610,2000,70,108],[2080,2420,108,58],[2500,2840,58,100],[2920,3240,100,122],[3330,3640,92,62],[3700,3880,62,90],[4040,4280,96,96],[4420,4560,84,100]]
+    .forEach(([y0,y1,x0,x1])=>L.lanes.push({y0,y1,x0,x1,w:22}));
+  const busy=y=>L.cross.some(c=>Math.abs(c.wy-y)<40)||y>END-120;
+  L.cross.push({wy:4150,state:'wait',t:0,peds:[0,1,2].map(i=>({x:10-i*9,s:i}))},{wy:4500,state:'wait',t:0,peds:[0,1,3].map(i=>({x:10-i*9,s:i}))});
+  // 洋流帶上的泡泡
+  for(const l of L.lanes)for(let y=l.y0+16;y<l.y1-8;y+=30)if(!busy(y))L.bubbles.push({wy:y,x:laneX(l,y),g:0});
+  // 散落泡泡
+  for(let y=110;y<END-140;y+=64){if(busy(y)||r()<.25)continue;const x=40+r()*100,n=1+Math.floor(r()*3);for(let i=0;i<n;i++)L.bubbles.push({wy:y+i*13,x:x+(r()-.5)*6,g:0});}
+  [600,1450,2300,3100,3750,4380].forEach((y,i)=>L.bubbles.push({wy:y,x:[120,50,130,60,128,64][i],g:1}));
+  // 三角錐（中性障礙）
+  for(let y=300;y<END-160;y+=125+r()*70){if(busy(y))continue;const lane=L.lanes.find(l=>y>=l.y0&&y<=l.y1);const x=lane&&r()<.5?laneX(lane,y)+(r()<.5?-3:3):40+r()*100;L.obst.push({t:'cone',wy:y,x,hit:0});}
+  // 違停小貨車（靠岸邊）
+  for(let y=2250;y<3900;y+=260+r()*120){if(busy(y))continue;L.obst.push({t:'truck',wy:y,x:r()<.5?42:138,hit:0});}
+  // 假訊息泡泡
+  for(let y=2600;y<END-150;y+=95+r()*50){if(busy(y))continue;L.fakes.push({wy:y,x:45+r()*90,vx:(r()<.5?-1:1)*(8+r()*10),dead:0});}
+  // 道具
+  L.items.push({t:'bottle',wy:1500,x:90},{t:'cane',wy:1960,x:90},{t:'bottle',wy:3560,x:76});
+  // 五座政見燈塔
+  [960,1780,2600,3300,4320].forEach((y,i)=>L.lights.push({wy:y,x:i%2?140:40,lit:0,i}));
+  // 鞭炮煙霧
+  [3480,3640,3800].forEach((y,i)=>L.smokes.push({wy:y,x:[70,110,80][i],w:46,hit:0}));
+  // 教學／劇情事件（依距離觸發）
+  const kb=(a,b)=>({kb:a,tc:b});
+  L.events=[
+    [10,'dlg','沈伯洋','先別急著衝，跟著橘色的流走，路自己會打開。'],
+    [60,'hint',kb('← → 或 A D 移動，吃橘色「民意泡泡」','甲板左側左右拖曳移動，吃橘色「民意泡泡」')],
+    [300,'hint',kb('進入橘色洋流帶：加速＋累積洋流能量','進入橘色洋流帶：加速＋累積洋流能量')],
+    [620,'hint',kb('能量夠了就按住 ↑／W 衝刺，可撞開三角錐','往上滑或按住 B 衝刺，可撞開三角錐')],
+    [860,'hint',kb('看到燈塔：按 Space 送出浪花點亮它','看到燈塔：按 A 送出浪花點亮它')],
+    [1050,'zone'],
+    [1580,'convoy'],
+    [1600,'dlg','粉撲','機車隊跟上來了！大家一起順著洋流走～'],
+    [1930,'hint',kb('前方有「甘蔗寶刀」！','前方有「甘蔗寶刀」！')],
+    [2150,'zone'],
+    [2560,'hint',kb('灰紫色「!!」是假訊息泡泡，用浪花戳破','灰紫色「!!」是假訊息泡泡，按 A 戳破')],
+    [2700,'convoyEnd'],
+    [2950,'zone'],
+    [3000,'dlg','夜市攤商','這張海報是客人自己做的啦，貼了就大家都說叫「洋流」。'],
+    [3220,'dlg','沈伯洋','白天有市長，晚上也要有人顧——夜市長，報到。'],
+    [3420,'hint',kb('鞭炮煙霧：按住 ↓／S 減速慢慢過','鞭炮煙霧：往下滑並停住，減速慢慢過')],
+    [3440,'note','遵守交通、不放鞭炮，街坊才睡得好'],
+    [3850,'zone'],
+    [4040,'hint',kb('斑馬線前按住 ↓／S 停下，禮讓行人','斑馬線前往下滑並停住，禮讓行人')],
+    [4580,'zone'],
+  ].map(e=>({d:e[0],type:e[1],a:e[2],b:e[3],done:0}));
+  return L;
+}
+
+/* ================= 遊戲狀態 ================= */
+let G=null;
+function newRun(){
+  const L=buildLevel();
+  G=Object.assign(L,{dist:0,time:0,px:90,hp:3,inv:0,energy:30,wave:START_WAVE,bub:0,gold:0,popped:0,lit:0,badges:0,hits:0,
+    dashing:false,slow:false,waveCD:0,rings:[],parts:[],toasts:[],dlg:null,haze:0,freeze:0,lastExit:-9,combo:0,inLane:false,
+    cane:false,ended:false,endT:0,convoy:0,convoyOn:false,convoyHits:0,convoyEgg:false,zone:0,crew:String(Math.floor(Math.random()*90000)+10000),
+    smokeHint:0,fakeHint:0,speed:40,posterEgg:false});
+}
+const inp={left:0,right:0,up:0,down:0};
+const tch={drag:null,dash:false,slow:false,bDown:null};
+function toast(text,kind,dur){G.toasts.push({text,kind:kind||'info',t:0,dur:dur||2.6});}
+function hint(o){toast(S.touch?o.tc:o.kb,'hint',3.2);}
+function dialog(who,text,dur){G.dlg={who,text,t:0,dur:dur||Math.max(3.2,text.length*.16)};}
+function burst(x,y,col,n,sp){for(let i=0;i<(n||8);i++){const a=Math.random()*Math.PI*2,v=(sp||40)*(.4+Math.random()*.8);G.parts.push({x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,t:0,life:.4+Math.random()*.3,col});}}
+function addWave(v){G.wave=clamp(G.wave+v,START_WAVE,1000);if(v>0)G.waveFlash=.25;}
+const sy=wy=>PY-(wy-G.dist);   // 世界 → 螢幕 y
+
+/* ================= 更新 ================= */
+function fire(){
+  if(G.waveCD>0||G.ended)return;G.waveCD=.38;
+  G.rings.push({x:G.px,y:PY-12,r:2,max:G.cane?50:32,t:0,hitSet:new Set()});SFX.wave();
+}
+function update(dt){
+  S.t+=dt;
+  if(S.state!=='play'||S.paused)return;
+  if(S.bot)botInput();
+  G.time+=G.ended?0:dt;
+  G.waveCD=Math.max(0,G.waveCD-dt);G.waveFlash=Math.max(0,(G.waveFlash||0)-dt);G.inv=Math.max(0,G.inv-dt);G.haze=Math.max(0,G.haze-dt);
+  // 移動
+  const dir=(inp.right?1:0)-(inp.left?1:0);
+  if(!G.ended&&G.freeze<=0)G.px+=dir*78*dt;
+  G.px=clamp(G.px,37,143);
+  G.slow=!!(inp.down||tch.slow);
+  const wantDash=!!(inp.up||tch.dash)&&!G.slow;
+  if(wantDash&&!G.dashing&&G.energy>=30&&!G.ended){G.dashing=true;SFX.dash();}
+  if(G.dashing&&(!wantDash||G.energy<=0))G.dashing=false;
+  // 洋流帶
+  const was=G.inLane;
+  G.inLane=G.lanes.some(l=>G.dist>=l.y0&&G.dist<=l.y1&&Math.abs(laneX(l,G.dist)-G.px)<l.w/2+3);
+  if(G.inLane&&!was){G.combo=(G.time-G.lastExit<1.5)?Math.min(3,G.combo+1):0;if(G.combo>0)toast('順流連擊 ×'+[1,1.2,1.5,2][G.combo],'combo',1.2);}
+  if(!G.inLane&&was)G.lastExit=G.time;
+  if(G.inLane)G.energy=Math.min(100,G.energy+12*dt);
+  if(G.dashing)G.energy=Math.max(0,G.energy-25*dt);
+  // 速度
+  let sp=44*(G.dashing?2.2:G.inLane?1.5:1);
+  if(G.slow)sp*=.35;
+  // 斑馬線
+  for(const c of G.cross){
+    const rel=c.wy-G.dist;
+    if(c.state==='wait'&&rel<70&&rel>0)c.active=true;
+    if(c.state==='wait'&&G.slow&&rel<=26&&rel>0){c.state='cross';c.t=0;}
+    if(c.state==='cross'){sp=0;c.t+=dt;c.peds.forEach(p=>p.x+=34*dt);if(c.peds.every(p=>p.x>168)){c.state='done';G.badges++;addWave(6);SFX.badge();toast('獲得「禮讓徽章」！謝謝你讓行人先走','badge',2.6);}}
+    if(c.state==='wait'&&rel<=0){c.state='shake';c.t=0;toast('行人停下來搖搖頭……下次記得禮讓喔','info',2.4);}
+    if(c.state==='shake')c.t+=dt;
+  }
+  if(G.freeze>0){G.freeze-=dt;sp=0;}
+  // 終點
+  if(G.ended){sp=0;G.endT+=dt;G.px+=(90-G.px)*Math.min(1,dt*2);if(G.endT>4.2&&S.state==='play'){S.state='clear';S.focus=0;SFX.clear();}}
+  G.speed=sp;
+  G.dist+=sp*dt;
+  if(!G.ended&&G.dist>=END){G.dist=END;G.ended=true;G.dashing=false;G.toasts=[];
+    dialog('沈伯洋','剛剛車多、鞭炮也吵，打擾到街坊，真的抱歉。下次我們安靜一點地航行。',4.2);}
+  // 泡泡
+  const mult=[1,1.2,1.5,2][G.combo]||1;
+  for(const b of G.bubbles){if(b.got)continue;const dy=b.wy-G.dist;if(dy<-20)continue;if(dy>20)continue;
+    if(Math.abs(b.x-G.px)<(b.g?10:9)&&Math.abs(dy+2)<10){b.got=1;if(b.g){G.gold++;addWave(6*mult);SFX.gold();burst(b.x,sy(b.wy),'y',12);}else{G.bub++;addWave(.9*mult);SFX.bubble();burst(b.x,sy(b.wy),'l',5,25);}}}
+  // 假訊息
+  for(const f of G.fakes){if(f.dead)continue;const dy=f.wy-G.dist;if(dy>200||dy<-100)continue;
+    f.x+=f.vx*dt;if(f.x<40||f.x>140)f.vx*=-1;f.x=clamp(f.x,40,140);
+    if(Math.abs(f.x-G.px)<10&&Math.abs(dy+2)<10&&!G.ended){f.dead=1;addWave(-6);G.haze=Math.max(G.haze,.6);SFX.hit();burst(f.x,sy(f.wy),'p',10);
+      if(G.fakeHint<2){G.fakeHint++;toast(S.touch?'被假訊息黏到了！按 A 浪花先戳破它':'被假訊息黏到了！按 Space 浪花先戳破它','warn',2.4);}}}
+  // 障礙
+  for(const o of G.obst){if(o.hit)continue;const dy=o.wy-G.dist;if(dy>20||dy<-30)continue;
+    const hw=o.t==='truck'?7:4,hh=o.t==='truck'?8:4;
+    if(Math.abs(o.x-G.px)<hw+5&&Math.abs(dy)<hh+5){
+      if(o.t==='cone'&&G.dashing){o.hit=2;burst(o.x,sy(o.wy),'o',8);SFX.pop();continue;}
+      if(G.inv>0)continue;
+      o.hit=1;damage();}}
+  // 道具
+  for(const it of G.items){if(it.got)continue;const dy=it.wy-G.dist;if(Math.abs(dy)<10&&Math.abs(it.x-G.px)<11){it.got=1;SFX.item();
+    if(it.t==='bottle'){G.hp=Math.min(3,G.hp+1);toast('洋流補給：救生圈 +1','item',2);}
+    else{G.cane=true;burst(G.px,PY,'g',14);toast('甘蔗寶刀到手！步步高升：浪花範圍變大','item',3);dialog('粉撲','對，甘蔗要站著放！這樣才會步步高升！',3.4);}}}
+  // 燈塔（浪花點亮或近距離通過）
+  for(const lt of G.lights){if(lt.lit)continue;const dy=lt.wy-G.dist;
+    if(dy<4&&dy>-8&&Math.abs(lt.x-G.px)<34)lightUp(lt,false);
+    else if(dy<-8&&!lt.missed){lt.missed=1;toast('錯過燈塔了！下一座記得靠近或用浪花','info',2);}}
+  // 煙霧
+  for(const s of G.smokes){const dy=s.wy-G.dist;if(s.hit||Math.abs(dy)>10)continue;if(Math.abs(s.x-G.px)<s.w/2){s.hit=1;
+    if(G.slow){toast('慢慢過，沒事～','good',1.6);addWave(2);}else{G.haze=1.8;SFX.hit();if(G.smokeHint++<2)toast(S.touch?'看不清楚！往下滑減速再過':'看不清楚！按住 ↓ 減速再過','warn',2);}}}
+  // 浪花
+  for(const r of G.rings){r.t+=dt;r.r=2+(r.max-2)*Math.min(1,r.t/.28);
+    for(const f of G.fakes){if(f.dead)continue;const d=Math.hypot(f.x-r.x,sy(f.wy)-r.y);if(d<r.r+6){f.dead=1;G.popped++;addWave(3);SFX.pop();burst(f.x,sy(f.wy),'p',10);burst(f.x,sy(f.wy),'W',6);}}
+    for(const lt of G.lights){if(lt.lit)continue;const d=Math.hypot(lt.x-r.x,sy(lt.wy)-8-r.y);if(d<r.r+10)lightUp(lt,true);}
+    if(!G.posterEgg&&G.dist>2900&&G.dist<3300){const py=sy(3150);if(Math.hypot(18-r.x,py-r.y)<r.r+14){G.posterEgg=true;toast('寧夏第一張海報：「8 月中，一切從這裡開始」','egg',3);SFX.item();}}
+  }
+  G.rings=G.rings.filter(r=>r.t<.34);
+  // 機車隊
+  if(G.convoyOn)G.convoy=Math.min(2000,Math.round(G.convoy+dt*190));
+  // 事件
+  for(const e of G.events){if(e.done||G.dist<e.d)continue;e.done=1;
+    if(e.type==='dlg')dialog(e.a,e.b);
+    else if(e.type==='hint')hint(e.a);
+    else if(e.type==='note')toast(e.a,'note',3);
+    else if(e.type==='zone'){G.zone=zoneAt(e.d);toast('進入　'+ZONES[G.zone][1],'zone',2);}
+    else if(e.type==='convoy'){G.convoyOn=true;G.convoy=1;G.convoyHits=G.hits;toast('機車隊集結！跟隨船員持續增加中','info',2.4);}
+    else if(e.type==='convoyEnd'){G.convoy=2000;if(G.hits===G.convoyHits){G.convoyEgg=true;toast('零碰撞！解鎖「機車隊船身」（彩蛋）','egg',2.8);}}
+  }
+  // 粒子／提示
+  for(const p of G.parts){p.t+=dt;p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=30*dt;}
+  G.parts=G.parts.filter(p=>p.t<p.life);
+  if(G.toasts.length){const t=G.toasts[0];t.t+=dt*(G.toasts.length>2?1.8:1);if(t.t>t.dur)G.toasts.shift();}
+  if(G.dlg){G.dlg.t+=dt;if(G.dlg.t>G.dlg.dur)G.dlg=null;}
+}
+function lightUp(lt,byWave){lt.lit=1;G.lit++;addWave(byWave?12:8);SFX.light();burst(lt.x,sy(lt.wy)-10,'l',16,50);
+  toast('政見燈塔 '+G.lit+'/5｜'+POLICIES[lt.i],'policy',3);}
+function damage(){
+  G.hits++;G.hp--;G.inv=1.3;SFX.hit();burst(G.px,PY,'R',10);
+  if(G.hp<=0){G.hp=3;G.inv=3;G.freeze=2;toast('救生圈用完了！粉撲們把你拉回航道，休息 2 秒','warn',2.4);}
+}
+
+/* ================= 自動駕駛（僅測試用：?bot=1） ================= */
+function botInput(){
+  const g=G;let target=90;inp.left=inp.right=inp.up=inp.down=0;
+  const lane=g.lanes.find(l=>g.dist+40>=l.y0&&g.dist<=l.y1-10);
+  if(lane)target=laneX(lane,Math.max(g.dist+10,lane.y0));
+  else{const b=g.bubbles.filter(b=>!b.got&&b.wy-g.dist>5&&b.wy-g.dist<90).sort((a,b)=>a.wy-b.wy)[0];if(b)target=b.x;}
+  for(const o of g.obst){const d=o.wy-g.dist;if(o.hit||d<0||d>60)continue;if(o.t==='cone'&&g.dashing)continue;const hw=o.t==='truck'?16:12;if(Math.abs(o.x-target)<hw)target=o.x+(o.x<90?hw+4:-hw-4);}
+  const unlit=g.lights.find(l=>!l.lit&&l.wy-g.dist>0&&l.wy-g.dist<120);if(unlit)target=unlit.x<90?50:130;
+  if(target<g.px-2)inp.left=1;if(target>g.px+2)inp.right=1;
+  if(g.energy>55&&!g.obst.some(o=>o.t==='truck'&&!o.hit&&o.wy-g.dist>0&&o.wy-g.dist<80))inp.up=1;
+  if(g.fakes.some(f=>!f.dead&&f.wy-g.dist>0&&f.wy-g.dist<45&&Math.abs(f.x-g.px)<40))fire();
+  if(unlit&&unlit.wy-g.dist<50)fire();
+  if(g.cross.some(c=>c.state==='wait'&&c.wy-g.dist<60&&c.wy-g.dist>0)||g.cross.some(c=>c.state==='cross'))inp.down=1,inp.up=0;
+  if(g.smokes.some(s=>!s.hit&&s.wy-g.dist<30&&s.wy-g.dist>-5))inp.down=1,inp.up=0;
+}
+
+/* ================= 繪圖：場景 ================= */
+function nightAt(wy){return clamp((wy-2850)/350,0,1);}
+function drawScene(){
+  const b=bx,d=Math.floor(G.dist),T=S.t;
+  const night=nightAt(G.dist);
+  // 水面
+  R(b,30,0,120,GH,'b');
+  for(let row=-4;row<GH+8;row+=4){const wy=Math.floor((d+PY-row)/4);const y=PY-(wy*4-d);if(y<-4||y>GH)continue;
+    const h1=hash(wy,7);if(h1<.55){const x=31+Math.floor(hash(wy,3)*112);R(b,x,y,h1<.2?5:3,1,h1<.3?'c':'D');}}
+  // 河岸（12px 圖塊）
+  const i0=Math.floor((d-(GH-PY)-12)/12),i1=Math.floor((d+PY+12)/12);
+  const lights=[];
+  for(let i=i0;i<=i1;i++){const wy=i*12,y=Math.round(PY-(wy+12-d));if(y>GH)continue;const z=zoneAt(wy);
+    drawBank(b,0,y,i,z,lights,T);drawBank(b,1,y,i,z,lights,T);
+    if(wy>END+20){R(b,30,y,120,12,'y');R(b,30,y,120,1,'l');for(let x=30;x<150;x+=12)R(b,x,y,1,12,'l');}
+    else{for(let k=0;k<12;k+=3){R(b,30,y+k,1,2,'w');R(b,149,y+k+1,1,2,'w');}}
+  }
+  // 保安宮
+  drawTemple(b,Math.round(PY-(END+84-d)),lights,T);
+  // 夜色
+  if(night>0){b.fillStyle='rgba(27,27,47,'+(night*.5)+')';b.fillRect(0,0,W,GH);}
+  for(const L of lights){b.fillStyle='rgba(255,179,71,'+(.18+.5*night)*.5+')';b.fillRect(L[0]-2,L[1]-2,5,5);R(b,L[0],L[1],1+(L[2]||0),1+(L[2]||0),L[3]||'l');}
+  // 洋流帶
+  for(const l of G.lanes){const yTop=sy(l.y1),yBot=sy(l.y0);if(yBot<0||yTop>GH)continue;
+    for(let y=Math.max(0,Math.floor(yTop));y<Math.min(GH,yBot);y+=2){const wy=G.dist+PY-y;const x=Math.round(laneX(l,wy)),hw=l.w/2;
+      R(b,x-hw,y,l.w,2,'o');R(b,x-hw,y,2,2,'O');R(b,x+hw-2,y,2,2,'O');
+      const ph=Math.floor(wy+T*60)%14;if(ph<2){R(b,x-4,y,3,1,'l');R(b,x+1,y,3,1,'l');}if(ph===2)R(b,x-1,y,2,1,'W');}}
+  // 斑馬線
+  for(const c of G.cross){const y=Math.round(sy(c.wy));if(y<-20||y>GH+20)continue;
+    R(b,30,y-7,120,14,'G');for(let x=33;x<148;x+=8)R(b,x,y-6,5,12,'W');R(b,30,y+9,120,1,'W');
+    for(const p of c.peds){let px=p.x<30?p.x+(c.state==='wait'?0:0):p.x;const bob=(c.state==='cross'&&Math.floor(T*8)%2)?1:0;
+      const yy=y-12-bob;b.drawImage(SP.peds[p.s],Math.round(Math.min(px,170)),yy);
+      if(c.state==='shake'&&c.t<3){R(b,Math.round(px)+(Math.floor(T*10)%2),yy-4,6,3,'W');}}
+  }
+  // 煙霧
+  for(const s of G.smokes){const y=sy(s.wy);if(y<-30||y>GH+30)continue;
+    for(let i=0;i<9;i++){const a=hash(i,s.wy);const r=4+Math.floor(a*5);const x=s.x-s.w/2+a*s.w,yy=y-8+hash(s.wy,i)*16+Math.sin(T*2+i)*2;
+      b.fillStyle=i%3?'rgba(191,232,238,.55)':'rgba(138,133,128,.6)';b.fillRect(Math.round(x-r),Math.round(yy-r),r*2,r*2);}
+    for(let i=0;i<5;i++)R(b,s.x-15+i*7+Math.sin(T*3+i)*2,y-5+((T*20+i*7)%14),1,2,'R');}
+  // 道具
+  for(const it of G.items){if(it.got)continue;const y=sy(it.wy);if(y<-20||y>GH)continue;const bob=Math.round(Math.sin(T*4)*1.5);
+    if(it.t==='cane'){R(b,it.x-6,y-10+bob,13,1,'l');b.drawImage(SP.cane,Math.round(it.x-2),Math.round(y-9+bob));}
+    else b.drawImage(SP.bottle,Math.round(it.x-3),Math.round(y-5+bob));}
+  // 燈塔
+  for(const lt of G.lights){const y=Math.round(sy(lt.wy));if(y<-30||y>GH+30)continue;
+    if(lt.lit){const a=(Math.sin(T*3)+1)/2;b.fillStyle='rgba(255,200,110,'+(.28+.22*a)+')';const dir=lt.x<90?1:-1;b.beginPath();b.moveTo(lt.x,y-14);b.lineTo(lt.x+dir*60,y-34);b.lineTo(lt.x+dir*60,y-4);b.closePath();b.fill();}
+    b.drawImage(lt.lit?SP.light1:SP.light0,lt.x-5,y-19);}
+  // 障礙
+  for(const o of G.obst){const y=Math.round(sy(o.wy));if(y<-30||y>GH+30||o.hit===2)continue;
+    if(o.t==='cone')b.drawImage(SP.cone,Math.round(o.x-3),y-4);else b.drawImage(SP.truck,Math.round(o.x-7),y-8);}
+  // 泡泡
+  for(const bb of G.bubbles){if(bb.got)continue;const y=sy(bb.wy);if(y<-12||y>GH+6)continue;const bob=Math.round(Math.sin(T*3+bb.wy)*1);
+    if(bb.g){b.drawImage(SP.gold,Math.round(bb.x-5),Math.round(y-5+bob));if(Math.floor(T*6+bb.wy)%6===0)R(b,bb.x+4,y-6,1,1,'W');}
+    else b.drawImage(SP.bub,Math.round(bb.x-4),Math.round(y-4+bob));}
+  for(const f of G.fakes){if(f.dead)continue;const y=sy(f.wy);if(y<-12||y>GH+6)continue;b.drawImage(SP.fake,Math.round(f.x-6),Math.round(y-6+Math.sin(T*5+f.wy)));}
+  // 機車隊
+  if(G.convoyOn||G.convoy>=2000){const fade=G.dist<2750?1:clamp(1-(G.dist-2750)/250,0,1);
+    if(fade>0){const rows=Math.min(5,1+Math.floor(G.convoy/400));
+      for(let rr=0;rr<rows;rr++)for(let c=0;c<6;c++){if((rr+c)%2)continue;const x=40+c*18+Math.sin(T*2+rr+c)*2,y=PY+18+rr*13+(1-fade)*80;if(y>GH)continue;b.drawImage(SP.scoots[(rr*3+c)%5],Math.round(x-5),Math.round(y));}}}
+  // 玩家
+  drawPlayer(b,T);
+  // 浪花
+  for(const r of G.rings){b.strokeStyle='rgba(191,232,238,'+(1-r.t/.34)+')';b.lineWidth=2;b.beginPath();b.arc(r.x,r.y,r.r,0,Math.PI*2);b.stroke();
+    b.strokeStyle='rgba(255,244,224,'+(1-r.t/.34)*.8+')';b.lineWidth=1;b.beginPath();b.arc(r.x,r.y,Math.max(1,r.r-3),0,Math.PI*2);b.stroke();}
+  for(const p of G.parts)R(b,p.x,p.y,1,1,p.col);
+  if(G.haze>0){b.fillStyle='rgba(191,191,200,'+Math.min(.75,G.haze*.5)+')';b.fillRect(0,0,W,GH);}
+}
+function drawBank(b,side,y,i,z,lights,T){
+  const x0=side?150:0,w=30,h=hash(i,side+11),h2=hash(i,side+29);
+  if(z===0){ // 北投：綠地、溫泉白煙
+    R(b,x0,y,w,12,'g');if(h<.3){R(b,x0+6+h*10,y+3,8,5,'c');R(b,x0+7+h*10,y+4,6,1,'w');for(let s=0;s<3;s++){const sy2=y+2-((T*10+s*5+i)%14);b.fillStyle='rgba(255,244,224,.55)';b.fillRect(Math.round(x0+8+h*10+s*2+Math.sin(T+s)*1.5),Math.round(sy2),2,2);}}
+    else if(h<.7){R(b,x0+4+h2*16,y+1,8,7,'k');R(b,x0+5+h2*16,y+2,6,5,'g');R(b,x0+6+h2*16,y+2,3,2,'w');R(b,x0+7+h2*16,y+8,2,4,'n');}
+    else R(b,x0+h2*24,y+6,4,3,'G');
+  }else if(z===1){ // 士林：河濱草地＋自行車道
+    R(b,x0,y,w,12,'g');const px=side?x0+16:x0+6;R(b,px,y,8,12,'G');if(i%2)R(b,px+3,y+2,2,6,'W');
+    if(h<.35){const tx=side?x0+4:x0+20;R(b,tx-1,y+1,7,6,'k');R(b,tx,y+2,5,4,'g');R(b,tx+2,y+7,1,4,'n');}
+    if(h2<.12){R(b,side?x0+3:x0+24,y+4,4,4,'R');}
+  }else if(z===2){ // 中山：街屋
+    R(b,x0,y,w,12,'G');const col=['y','W','l','G'][Math.floor(h*4)];R(b,x0+1,y,w-2,11,col);R(b,x0+1,y+11,w-2,1,'k');
+    for(let wx=0;wx<3;wx++){const xx=x0+4+wx*8;R(b,xx,y+3,4,4,'k');R(b,xx+1,y+4,2,2,'c');lights.push([xx+1,y+4,1,'l']);}
+  }else if(z===3){ // 寧夏夜市：攤位、燈籠、橘色海報
+    R(b,x0,y,w,12,'n');const aw=h<.5?['R','W']:['o','W'];for(let k=0;k<w;k+=4)R(b,x0+k,y,4,4,aw[(k/4)%2]);
+    R(b,x0+2,y+5,w-4,5,'k');R(b,x0+3,y+6,w-6,3,'y');
+    if(h2<.4){R(b,x0+(side?4:18),y+5,7,6,'o');R(b,x0+(side?5:19),y+6,5,1,'W');R(b,x0+(side?5:19),y+8,4,1,'W');}
+    lights.push([x0+(side?24:4),y+2,1,'R']);
+  }else if(z===4){ // 迪化街：紅磚騎樓
+    R(b,x0,y,w,12,'r');R(b,x0,y+11,w,1,'k');for(let k=2;k<w-4;k+=9){R(b,x0+k,y+3,6,8,'n');R(b,x0+k+1,y+2,4,1,'n');}
+    if(h<.5){R(b,x0+(side?2:20),y+1,7,3,'y');}lights.push([x0+(side?26:3),y+3,0,'y']);
+  }else{ // 保安宮廟埕
+    R(b,x0,y,w,12,'y');R(b,x0,y,w,1,'l');for(let k=0;k<w;k+=10)R(b,x0+k,y,1,12,'l');if(h<.4)lights.push([x0+(side?22:6),y+4,1,'R']);
+  }
+}
+function drawTemple(b,y,lights,T){
+  if(y<-80||y>GH)return;
+  // 屋頂（燕尾脊）、紅柱、門
+  R(b,40,y-6,100,6,'y');R(b,46,y-30,88,24,'R');for(let x=52;x<130;x+=14)R(b,x,y-30,4,24,'r');R(b,78,y-24,24,18,'n');R(b,89,y-24,2,18,'k');
+  R(b,74,y-38,32,7,'y');R(b,75,y-37,30,5,'l'); // 匾額
+  R(b,36,y-44,108,8,'r');R(b,32,y-46,116,3,'O');R(b,30,y-50,6,5,'O');R(b,144,y-50,6,5,'O');R(b,28,y-54,4,4,'O');R(b,148,y-54,4,4,'O');
+  R(b,60,y-60,60,10,'r');R(b,56,y-62,68,3,'O');R(b,54,y-66,5,5,'O');R(b,121,y-66,5,5,'O');R(b,86,y-67,8,5,'g');
+  for(const x of [50,70,110,130])lights.push([x,y-30+Math.round(Math.sin(T*2+x)),2,'R']);
+}
+function drawPlayer(b,T){
+  const x=Math.round(G.px-8),y=PY-8;
+  // 浪痕
+  const n=G.dashing?7:3;for(let i=0;i<n;i++){const yy=y+15+i*3;R(b,x+3-i,yy,2,1,'w');R(b,x+11+i,yy,2,1,'w');}
+  if(G.dashing)for(let i=0;i<4;i++)R(b,x+2+i*4,y+18+((T*90+i*9)%22),1,4,'l');
+  if(G.inv>0&&Math.floor(T*14)%2)return;
+  if(G.convoyEgg){b.drawImage(SP.boat,x,y);R(b,x+3,y+9,10,1,'R');}else b.drawImage(SP.boat,x,y);
+  if(G.cane)b.drawImage(SP.cane,x+13,y-6);
+  // 洋流能量條（船下）
+  R(b,x,y+16,16,2,'k');R(b,x+1,y+16,Math.round(14*G.energy/100),1,G.energy>=100?'W':G.energy>=30?'o':'G');
+}
+
+/* ================= 繪圖：HUD／甲板（像素層） ================= */
+function drawHUDPixels(){
+  const b=bx;
+  R(b,0,0,W,16,'k');R(b,0,16,W,1,'O');
+  for(let i=0;i<3;i++)b.drawImage(i<G.hp?SP.buoy:SP.buoy0,124+i*10,4);
+  if(S.touch){R(b,160,2,16,12,'D');R(b,165,5,2,6,'W');R(b,169,5,2,6,'W');}
+  // 浪潮條（模式 B：只有高度＋過半旗，不顯示任何數字）
+  const bx0=170,top=30,bot=200,hgt=bot-top;
+  R(b,bx0-1,top-1,8,hgt+2,'k');R(b,bx0,top,6,hgt,'D');
+  const fh=Math.round(hgt*G.wave/1000);R(b,bx0,bot-fh,6,fh,G.waveFlash>0?'l':'o');R(b,bx0,bot-fh,6,1,'W');R(b,bx0+4,bot-fh,2,fh,'O');
+  for(let i=0;i<3;i++)if(Math.floor(S.t*4+i)%3===0)R(b,bx0+1+i*2,bot-fh-1,1,1,'W');
+  R(b,bx0+1,top-11,1,11,'W');R(b,bx0+2,top-11,5,4,'o');R(b,bx0+2,top-11,5,1,'l');
+  // 操作甲板
+  R(b,0,GH,W,H-GH,'k');R(b,0,GH,W,1,'O');
+  if(S.touch){
+    R(b,4,GH+5,104,H-GH-10,'D');R(b,5,GH+6,102,H-GH-12,'b');
+    const tx=56,ty=288;R(b,tx-30,ty,8,1,'w');R(b,tx+22,ty,8,1,'w');R(b,tx-30,ty-1,2,3,'w');R(b,tx+28,ty-1,2,3,'w');
+    R(b,tx,ty-16,1,8,'w');R(b,tx-1,ty-15,3,1,'w');R(b,tx,ty+8,1,8,'w');R(b,tx-1,ty+15,3,1,'w');
+    if(tch.drag){R(b,clamp(tch.drag.lx,8,104)-3,ty-3,6,6,'l');}
+    circle(b,135,293,13,tch.aFlash>0?'W':'o','O');circle(b,162,277,12,tch.dash||G.dashing?'W':G.energy>=30?'l':'G','O');
+  }else{
+    // 洋流雷達（鍵盤模式）
+    R(b,10,GH+15,160,2,'D');R(b,10,GH+15,Math.round(160*Math.min(1,G.dist/END)),2,'o');
+    ZONES.forEach((z,i)=>{const x=10+Math.round(160*z[0]/END);R(b,x-1,GH+13,3,6,i<=G.zone?'o':'G');});
+    const bxp=10+Math.round(160*Math.min(1,G.dist/END));R(b,bxp-2,GH+9,5,4,'W');R(b,bxp-1,GH+8,3,1,'o');
+  }
+}
+function circle(b,cx,cy,r,fill,edge){for(let y=-r;y<=r;y++){const w=Math.round(Math.sqrt(r*r-y*y));R(b,cx-w,cy+y,w*2+1,1,edge);}for(let y=-r+1;y<=r-1;y++){const w=Math.round(Math.sqrt((r-1)*(r-1)-y*y));R(b,cx-w,cy+y,w*2+1,1,fill);}}
+
+/* ================= 文字層（以裝置解析度繪製，清晰） ================= */
+function T_(s,x,y,size,col,align,opt){
+  opt=opt||{};ctx.font=(opt.w||700)+' '+size+'px '+FONT;ctx.textAlign=align||'left';ctx.textBaseline='middle';
+  if(opt.stroke!==false){ctx.lineJoin='round';ctx.lineWidth=opt.sw||Math.max(1.2,size/4);ctx.strokeStyle=opt.sc||PAL.k;ctx.strokeText(s,x,y);}
+  ctx.fillStyle=PAL[col]||col;ctx.fillText(s,x,y);
+}
+function wrap(s,maxW,size){ctx.font='700 '+size+'px '+FONT;const out=[];let line='';for(const ch of s){if(ctx.measureText(line+ch).width>maxW&&line){if('，。！？、」』）'.includes(ch)){line+=ch;continue;}out.push(line);line=ch;}else line+=ch;}if(line)out.push(line);return out;}
+function box(x,y,w,h,fill,edge){ctx.fillStyle=PAL[edge]||edge;ctx.fillRect(x,y,w,h);ctx.fillStyle=PAL[fill]||fill;ctx.fillRect(x+1,y+1,w-2,h-2);}
+let BTNS=[];
+function btn(label,x,y,w,h,fn,primary){const i=BTNS.length;BTNS.push({x,y,w,h,fn});const foc=!S.touch&&S.focus===i;
+  box(x,y,w,h,primary?'o':'D',foc?'W':primary?'O':'c');if(foc){ctx.fillStyle=PAL.W;ctx.fillRect(x-3,y+h/2-2,2,4);}
+  T_(label,x+w/2,y+h/2+.5,8,primary?'W':'W','center',{sc:primary?PAL.O:PAL.k});}
+function drawUIText(){
+  const g=G;
+  T_('第1關・'+ZONES[g.zone][1],4,8.5,6.5,'l');
+  T_(fmtT(g.time),S.touch?110:112,8.5,6.5,'W','center');
+  T_('過半',167,22,5.5,'W','right');
+  T_('浪潮',173,207,5,'l','center');
+  if(S.touch){T_('拖曳移動・↑滑衝刺・↓滑減速',56,GH+11,5,'w','center',{stroke:false,w:500});T_('A',135,291,8,'W','center');T_('浪花',135,301.5,4.6,'W','center');T_('B',162,275,7,'k','center',{stroke:false});T_('衝刺',162,284.5,4.6,'k','center',{stroke:false});}
+  else{ZONES.forEach((z,i)=>{const x=10+160*z[0]/END;const nm=['北投','士林','中山','寧夏','迪化','保安宮'][i];T_(nm,Math.min(166,Math.max(10,x)),GH+25,4.8,i<=g.zone?'l':'G','center',{w:500});});
+    T_('←→ 移動　↑ 衝刺　↓ 減速／禮讓　Space 浪花',90,GH+40,5.6,'W','center',{stroke:false,w:500});
+    T_('Esc 暫停　M '+(S.muted?'取消靜音':'靜音'),90,GH+51,5.2,'G','center',{stroke:false,w:500});}
+  if(g.convoyOn&&g.dist<2900){T_('跟隨船員：'+g.convoy.toLocaleString('en-US'),4,24,6,'W','left');}
+  // 斑馬線提示
+  for(const c of g.cross){if(c.state==='wait'&&c.active){const y=sy(c.wy);if(y>20&&y<GH){const blink=Math.floor(S.t*3)%2;T_(S.touch?'↓ 往下滑停住，禮讓行人':'按住 ↓ 禮讓行人',90,y-22,6.5,blink?'W':'l','center');}}}
+  // 提示框
+  if(g.toasts.length){const t=g.toasts[0];const a=Math.min(1,t.t*5,(t.dur-t.t)*4);ctx.globalAlpha=clamp(a,0,1);
+    const size=t.kind==='policy'?7:6.5;const lines=wrap(t.text,150,size);const hh=lines.length*(size+3)+8;const y0=30;
+    const col={hint:['D','o'],policy:['o','W'],warn:['p','W'],badge:['g','W'],item:['O','W'],egg:['n','l'],zone:['k','l'],combo:['k','o'],note:['n','y'],good:['g','W'],info:['k','c']}[t.kind]||['k','c'];
+    box(12,y0,156,hh,col[0],col[1]);lines.forEach((ln,i)=>T_(ln,90,y0+4+size/2+i*(size+3)+.5,size,'W','center'));ctx.globalAlpha=1;}
+  // 對話框
+  if(g.dlg){const d=g.dlg;box(4,206,164,46,'k','O');ctx.fillStyle=PAL.D;ctx.fillRect(7,209,34,34);ctx.drawImage(PORTRAIT[d.who]||SP.shen,8,210,32,32);
+    T_(d.who,45,213,6,'l','left',{stroke:false});const shown=d.text.slice(0,Math.floor(d.t*28));
+    wrap(shown,118,6.5).slice(0,3).forEach((ln,i)=>T_(ln,45,222.5+i*9,6.5,'W','left',{stroke:false,w:500}));}
+  if(g.freeze>0)T_('休息一下…',90,120,10,'W','center');
+}
+function drawTitle(){
+  const b=bx,T=S.t;R(b,0,0,W,H,'D');
+  for(let y=0;y<H;y+=4){const h1=hash(Math.floor(y/4)-Math.floor(T*8),5);if(h1<.4)R(b,Math.floor(hash(Math.floor(y/4)-Math.floor(T*8),9)*W),y,4,1,'b');}
+  for(let y=0;y<H;y+=2){const x=90+Math.sin((y+T*40)/26)*22;R(b,x-14,y,28,2,'o');R(b,x-14,y,2,2,'O');R(b,x+12,y,2,2,'O');if(Math.floor(y+T*60)%16<2)R(b,x-3,y,6,1,'l');}
+  b.drawImage(SP.boat,Math.round(90+Math.sin((210+T*40)/26)*22-8),200+Math.round(Math.sin(T*3)*2));
+  for(let i=0;i<6;i++){const x=(i*37+T*14)%200-10,y=110+i*30;b.drawImage(SP.bub,Math.round(x),Math.round(y+Math.sin(T*2+i)*3));}
+  b.drawImage(SP.cane,150,226);
+}
+
+/* ================= 主繪圖 ================= */
+function render(){
+  bx.imageSmoothingEnabled=false;
+  bx.clearRect(0,0,W,H);
+  const inGame=(S.state==='play'||S.state==='clear')&&G;
+  if(inGame){drawScene();drawHUDPixels();}else drawTitle();
+  ctx.setTransform(1,0,0,1,0,0);ctx.imageSmoothingEnabled=false;ctx.clearRect(0,0,cv.width,cv.height);
+  ctx.drawImage(buf,0,0,W*K,H*K);
+  ctx.setTransform(K,0,0,K,0,0);ctx.imageSmoothingEnabled=false;
+  BTNS=[];
+  if(inGame&&S.state==='play')drawUIText();
+  if(S.state==='title')uiTitle();
+  else if(S.state==='howto')uiHowto();
+  else if(S.state==='crew')uiCrew();
+  else if(S.state==='clear')uiClear();
+  if(S.paused&&S.state==='play')uiPause();
+}
+function uiTitle(){
+  T_('洋流大冒險',90,62,26,'o','center',{sw:5});
+  T_('洋流大冒險',90,62,26,'l','center',{stroke:false});
+  T_('第 1 關・大洋流首航',90,90,9,'W','center');
+  T_('北投・士林 → 中山・大同',90,103,6.5,'w','center');
+  const blink=Math.floor(S.t*2)%2;
+  btn('開始航行',45,140,90,20,()=>go('howto'),true);
+  T_(S.touch?'點一下開始':'按 Space／Enter 開始',90,170,6,blink?'W':'l','center');
+  box(36,243,108,14,'k','D');
+  T_((S.muted?'音效：關':'音效：開')+(S.touch?'（點這裡切換）':'（M 切換）'),90,250,5.5,'w','center',{w:500});
+  BTNS.push({x:40,y:244,w:100,h:12,fn:()=>setMute(!S.muted)});
+  box(0,292,180,28,'k','k');
+  T_('試玩原型｜像素美術與音效皆以程式即時產生',90,300,5,'G','center',{w:500});
+  T_('非正式宣傳品・出品／出資標示待法務定稿',90,309,5,'G','center',{w:500});
+}
+function uiHowto(){
+  box(8,14,164,292,'k','O');
+  T_('怎麼玩',90,28,11,'o','center');
+  T_(S.touch?'（偵測到觸控：手機操作）':'（偵測到鍵盤：電腦操作）',90,42,5.5,'G','center',{stroke:false,w:500});
+  const rows=S.touch?[['左右拖曳','底部甲板左側：移動'],['往上滑','衝刺（或按住 B）'],['往下滑停住','減速／禮讓'],['A 鈕','浪花：戳假訊息、點燈塔'],['右上 II','暫停']]
+                    :[['← → / A D','左右移動'],['↑ / W 按住','衝刺（耗洋流能量）'],['↓ / S 按住','減速／禮讓行人'],['Space','浪花：戳假訊息、點燈塔'],['Esc / M','暫停／靜音']];
+  rows.forEach((r,i)=>{const y=58+i*15;box(14,y-6,62,12,'D','c');T_(r[0],45,y+.5,5.8,'W','center',{stroke:false});T_(r[1],80,y+.5,6,'W','left',{stroke:false,w:500});});
+  T_('目標',90,140,8,'l','center');
+  ['乘著橘色洋流往上衝，吃「民意泡泡」','推高右側浪潮條，朝「過半」旗前進','點亮中山大同五座政見燈塔','戳破灰紫色「!!」假訊息泡泡','斑馬線前停下禮讓，煙霧中減速','沒有 Game Over，一起航向保安宮！']
+    .forEach((s,i)=>T_('・'+s,18,154+i*11,6,'W','left',{stroke:false,w:500}));
+  btn('下一步',45,232,90,18,()=>go('crew'),true);
+  btn(S.touch?'改看鍵盤說明':'改看觸控說明',45,256,90,15,()=>{S.touch=!S.touch;});
+}
+function uiCrew(){
+  box(14,40,152,170,'W','O');ctx.fillStyle=PAL.o;ctx.fillRect(15,41,150,22);
+  T_('洋流號 船員證',90,52,10,'W','center',{sc:PAL.O});
+  ctx.fillStyle=PAL.D;ctx.fillRect(22,70,42,42);ctx.drawImage(SP.boat,25,73,36,36);
+  T_('船員編號',72,78,6,'n','left',{stroke:false});T_('No.'+(G?G.crew:'-----'),72,91,10,'O','left',{stroke:false});
+  T_('（本機隨機產生，不上傳）',72,104,5,'G','left',{stroke:false,w:500});
+  ctx.fillStyle=PAL.D;ctx.fillRect(22,120,36,36);ctx.drawImage(SP.shen,24,122,32,32);
+  T_('船長 沈伯洋',64,124,6.2,'n','left',{stroke:false});
+  wrap('「船員，歡迎上船！洋流不是一個人推的，是大家一起推出來的。」',96,6.3).forEach((l,i)=>T_(l,64,135+i*9,6.3,'k','left',{stroke:false,w:500}));
+  T_('遊戲內船員證，非 LINE 官方系統',90,202,5,'G','center',{stroke:false,w:500});
+  btn('登船出發！',45,224,90,20,()=>go('play'),true);
+}
+function uiClear(){
+  const g=G;ctx.fillStyle='rgba(27,27,47,.78)';ctx.fillRect(0,0,W,H);
+  box(8,12,164,298,'k','O');
+  T_('第 1 關 通關！',90,26,12,'o','center');
+  T_('抵達 大龍峒保安宮',90,40,6.5,'w','center');
+  box(14,48,152,32,'o','W');
+  const q=wrap('「看來今天現場，有超過兩個人！」',140,8.2);q.forEach((l,i)=>T_(l,90,58+i*11,8.2,'W','center',{sc:PAL.O}));
+  T_('— 沈伯洋 Threads（10/11 首航後）',162,74,4.8,'W','right',{stroke:false,w:500});
+  const gained=g.wave-START_WAVE;const lvl=gained>=200?'洋流級':gained>=140?'大浪':gained>=80?'小浪':'漣漪';
+  const title=g.lit>=5&&g.badges>=2?'領航員':g.lit>=4?'大副':g.lit>=2?'水手':'見習船員';
+  const st=[['民意泡泡',(g.bub+g.gold)+' 顆'],['政見燈塔',g.lit+' / 5'],['戳破假訊息',g.popped+' 個'],['禮讓徽章',g.badges+' / 2'],['機車隊','約 2,000 台'],['航行時間',fmtT(g.time)]];
+  st.forEach((s,i)=>{const y=100+i*12;T_(s[0],22,y,6.5,'w','left',{stroke:false,w:500});T_(s[1],158,y,6.8,'W','right',{stroke:false});});
+  T_('浪潮等級',22,176,6.5,'w','left',{stroke:false,w:500});
+  ctx.fillStyle=PAL.D;ctx.fillRect(66,172,60,8);ctx.fillStyle=PAL.o;ctx.fillRect(66,172,Math.round(60*clamp(gained/240,0,1)),8);
+  T_(lvl,158,176,7,'l','right',{stroke:false});
+  T_('稱號：'+title+(g.convoyEgg?'・機車隊船身':'')+(g.posterEgg?'・海報彩蛋':''),90,191,6.3,'W','center',{stroke:false});
+  btn('再航一次',20,206,66,20,()=>{newRun();go('play');},true);
+  btn('回標題',94,206,66,20,()=>go('title'));
+  T_('下一關「青年浪潮」製作中',90,240,6,'G','center',{stroke:false,w:500});
+  T_('11/28（六）08:00–16:00',90,262,7,'l','center');
+  T_('回戶籍地投票，記得帶身分證',90,274,6.5,'W','center',{stroke:false,w:500});
+  T_('（遊戲數值為虛構，不代表任何民意調查）',90,296,4.8,'G','center',{stroke:false,w:500});
+}
+function uiPause(){
+  ctx.fillStyle='rgba(27,27,47,.8)';ctx.fillRect(0,0,W,H);
+  box(24,60,132,170,'k','O');T_('暫停',90,78,12,'o','center');
+  btn('繼續航行',40,95,100,18,()=>{S.paused=false;},true);
+  btn('重新開始本關',40,119,100,18,()=>{newRun();S.paused=false;});
+  btn(S.muted?'音效：關':'音效：開',40,143,100,18,()=>setMute(!S.muted));
+  btn(S.touch?'操作：觸控':'操作：鍵盤',40,167,100,18,()=>{S.touch=!S.touch;});
+  btn('回標題',40,191,100,18,()=>{S.paused=false;go('title');});
+}
+function go(st){SFX.ui();S.focus=0;if(st==='crew'&&!G)newRun();if(st==='crew'&&G&&G.dist>0)newRun();if(st==='play'&&!G)newRun();if(st==='title')G=null;S.state=st;S.paused=false;}
+
+/* ================= 輸入 ================= */
+const KEYMAP={ArrowLeft:'left',KeyA:'left',ArrowRight:'right',KeyD:'right',ArrowUp:'up',KeyW:'up',ArrowDown:'down',KeyS:'down'};
+window.addEventListener('keydown',e=>{
+  audioInit();
+  if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Space'].includes(e.code))e.preventDefault();
+  if(S.touch&&!e.repeat&&S.state!=='play')S.touch=false;
+  if(e.code==='KeyM'){setMute(!S.muted);return;}
+  const menu=S.state!=='play'||S.paused;
+  if(menu){
+    if(e.repeat)return;
+    if(e.code==='ArrowDown'||e.code==='KeyS'||e.code==='Tab'){e.preventDefault();S.focus=(S.focus+1)%Math.max(1,BTNS.filter(b=>b.fn&&b.h>=15).length);SFX.ui();}
+    else if(e.code==='ArrowUp'||e.code==='KeyW'){const n=Math.max(1,BTNS.filter(b=>b.h>=15).length);S.focus=(S.focus-1+n)%n;SFX.ui();}
+    else if(e.code==='Enter'||e.code==='Space'||e.code==='KeyJ'){const list=BTNS.filter(b=>b.h>=15);const bt=list[S.focus]||list[0];if(bt)bt.fn();}
+    else if((e.code==='Escape'||e.code==='KeyP')&&S.paused)S.paused=false;
+    else if(e.code==='KeyR'&&S.paused){newRun();S.paused=false;}
+    return;
+  }
+  if(e.code==='Escape'||e.code==='KeyP'){S.paused=true;S.focus=0;return;}
+  if(S.touch&&!e.repeat)S.touch=false;
+  if(KEYMAP[e.code])inp[KEYMAP[e.code]]=1;
+  if((e.code==='Space'||e.code==='KeyJ')&&!e.repeat)fire();
+  if(e.code==='ShiftLeft'||e.code==='ShiftRight'||e.code==='KeyK')inp.up=1;
+});
+window.addEventListener('keyup',e=>{if(KEYMAP[e.code])inp[KEYMAP[e.code]]=0;if(e.code==='ShiftLeft'||e.code==='ShiftRight'||e.code==='KeyK')inp.up=0;});
+window.addEventListener('blur',()=>{inp.left=inp.right=inp.up=inp.down=0;if(S.state==='play')S.paused=true;});
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&S.state==='play')S.paused=true;});
+function gpos(e){const r=cv.getBoundingClientRect();return{x:(e.clientX-r.left)/r.width*W,y:(e.clientY-r.top)/r.height*H};}
+const ptrs=new Map();
+cv.addEventListener('pointerdown',e=>{
+  e.preventDefault();audioInit();try{cv.setPointerCapture(e.pointerId);}catch(_){}
+  if(e.pointerType==='touch'||e.pointerType==='pen')S.touch=true;
+  const p=gpos(e);
+  if(S.state!=='play'||S.paused){for(const b of BTNS)if(p.x>=b.x&&p.x<=b.x+b.w&&p.y>=b.y&&p.y<=b.y+b.h){b.fn();return;}
+    if(S.state==='title')go('howto');return;}
+  if(p.y<17&&p.x>150){S.paused=true;return;}
+  if(S.touch&&p.y>=GH&&p.x>=112){
+    if(Math.hypot(p.x-135,p.y-293)<17||(p.x<148&&p.y>285)){fire();tch.aFlash=.15;ptrs.set(e.pointerId,{kind:'A'});return;}
+    tch.dash=true;ptrs.set(e.pointerId,{kind:'B'});return;}
+  // 拖曳區（甲板左側；遊戲區也可拖曳）
+  ptrs.set(e.pointerId,{kind:'drag',sx:p.x,sy:p.y,lx:p.x,ly:p.y,ay:p.y,t0:performance.now()});tch.drag=ptrs.get(e.pointerId);
+},{passive:false});
+cv.addEventListener('pointermove',e=>{
+  e.preventDefault();const d=ptrs.get(e.pointerId);if(!d||d.kind!=='drag'||!G)return;const p=gpos(e);
+  G.px=clamp(G.px+(p.x-d.lx)*1.5,37,143);d.lx=p.x;
+  const dy=p.y-d.ay;
+  if(dy<-10){tch.dash=true;tch.slow=false;d.ay=p.y;}
+  else if(dy>10){tch.slow=true;tch.dash=false;d.ay=p.y;}
+},{passive:false});
+function ptrEnd(e){const d=ptrs.get(e.pointerId);if(!d)return;ptrs.delete(e.pointerId);
+  if(d.kind==='B')tch.dash=false;if(d.kind==='drag'){tch.drag=null;tch.dash=false;tch.slow=false;}}
+cv.addEventListener('pointerup',ptrEnd);cv.addEventListener('pointercancel',ptrEnd);cv.addEventListener('lostpointercapture',ptrEnd);
+['touchstart','touchmove','touchend','gesturestart','gesturechange','dblclick','contextmenu'].forEach(ev=>document.addEventListener(ev,e=>{if(e.cancelable)e.preventDefault();},{passive:false}));
+document.addEventListener('wheel',e=>{if(e.ctrlKey)e.preventDefault();},{passive:false});
+
+/* ================= 主迴圈 ================= */
+let last=performance.now(),acc=0;const STEP=1/60;
+function frame(now){
+  let dt=(now-last)/1000;last=now;if(dt>.25)dt=.25;acc+=dt*(window.__yl.speed||1);
+  while(acc>=STEP){update(STEP);acc-=STEP;if(tch.aFlash>0)tch.aFlash-=STEP;}
+  render();requestAnimationFrame(frame);
+}
+window.__yl={get S(){return S;},get G(){return G;},speed:Number(QS.get('speed'))||1,go,newRun,fire,
+  warp(d){if(!G)return;G.dist=d;for(const e of G.events)if(e.d<d)e.done=1;G.zone=zoneAt(d);},
+  setBot(v){S.bot=v;}};
+resize();cv.focus();requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
