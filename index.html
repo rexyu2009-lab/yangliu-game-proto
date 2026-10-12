@@ -97,8 +97,8 @@ window.addEventListener('resize',resize);window.addEventListener('orientationcha
 /* ================= 音效（WebAudio 程序化，原創） ================= */
 const S={state:'title',paused:false,muted:localStorage.getItem('yl_mute')==='1',touch:matchMedia('(pointer:coarse)').matches||('ontouchstart' in window),t:0,focus:0,bot:QS.get('bot')==='1'};
 let AC=null,MG=null,bgmStep=0,bgmNext=0;
-function audioInit(){if(AC){if(AC.state==='suspended')AC.resume();return;}try{AC=new (window.AudioContext||window.webkitAudioContext)();MG=AC.createGain();MG.gain.value=S.muted?0:.45;MG.connect(AC.destination);}catch(e){AC=null;}}
-function setMute(m){S.muted=m;localStorage.setItem('yl_mute',m?'1':'0');if(MG)MG.gain.value=m?0:.45;}
+function audioInit(){if(AC){if(AC.state==='suspended')AC.resume();return;}try{AC=new (window.AudioContext||window.webkitAudioContext)();MG=AC.createGain();MG.gain.value=S.muted?0:.9;const CP=AC.createDynamicsCompressor();CP.threshold.value=-10;CP.knee.value=6;CP.ratio.value=12;CP.attack.value=.003;CP.release.value=.15;MG.connect(CP);CP.connect(AC.destination);}catch(e){AC=null;}}
+function setMute(m){S.muted=m;localStorage.setItem('yl_mute',m?'1':'0');if(MG)MG.gain.value=m?0:.9;}
 function tone(f,d,type,vol,slide,delay){if(!AC||S.muted)return;const t=AC.currentTime+(delay||0);const o=AC.createOscillator(),g=AC.createGain();o.type=type||'square';o.frequency.setValueAtTime(f,t);if(slide)o.frequency.exponentialRampToValueAtTime(Math.max(40,f+slide),t+d);g.gain.setValueAtTime(vol||.12,t);g.gain.exponentialRampToValueAtTime(.001,t+d);o.connect(g);g.connect(MG);o.start(t);o.stop(t+d+.03);}
 function noise(d,vol,delay){if(!AC||S.muted)return;const t=AC.currentTime+(delay||0);const n=Math.floor(AC.sampleRate*d);const b=AC.createBuffer(1,n,AC.sampleRate);const a=b.getChannelData(0);for(let i=0;i<n;i++)a[i]=(Math.random()*2-1)*(1-i/n);const s=AC.createBufferSource();s.buffer=b;const g=AC.createGain();g.gain.value=vol||.15;s.connect(g);g.connect(MG);s.start(t);}
 const SFX={
@@ -161,11 +161,11 @@ SP.box=spr(["kkkkkkkkkkkkkkkkkk","knnnnnnnnnnnnnnnnk","kyyyyyyyyyyyyyyyyk","kyyy
 SP.flag0=spr(["kk.......","kGGGk....","kGGGGGk..","kGGGk....","kk.......","kk.......","kk.......","kk.......","kk.......","kk.......","kk.......","kk.......","kk.......","kk.......","kk.......","kk.......","kk.......","kk......."]);
 SP.flag1=spr(["kk.......","kooolk...","koooooOk.","kooolk...","kk.......","kk.......","kk.......","kk.......","kk.......","kk.......","kk.......","kk.......","kk.......","kk.......","kk.......","kk.......","kk.......","kk......."]);
 SP.cloudR=spr(["...kkkkk.......","..kGGGGGkkkk...",".kGGGGGGGGGGk..","kGGGGGGGGGGGGk.","kGGGGGGGGGGGGGk",".kGGGGGGGGGGGk.","..kkkkkkkkkkk.."]);
-Object.assign(PORTRAIT,{'蔣萬安':SP.chiang,'主持人':SP.hostP,'阿嬤':SP.grannyP,'路人':SP.voterP,'中間選民':SP.voterP,'青年':SP.voterP,'店家':SP.vendor,'船員內心':SP.fanP,'長輩':SP.grannyP,'家長':SP.voterP,'幼兒園家長':SP.voterP,'運動族':SP.voterP,'老屋住戶':SP.grannyP,'單車通勤族':SP.voterP,'通勤族':SP.voterP,'租屋族':SP.voterP,'下班族':SP.voterP});
+Object.assign(PORTRAIT,{'對手候選人':SP.chiang,'主持人':SP.hostP,'阿嬤':SP.grannyP,'路人':SP.voterP,'中間選民':SP.voterP,'青年':SP.voterP,'店家':SP.vendor,'船員內心':SP.fanP,'長輩':SP.grannyP,'家長':SP.voterP,'幼兒園家長':SP.voterP,'運動族':SP.voterP,'老屋住戶':SP.grannyP,'單車通勤族':SP.voterP,'通勤族':SP.voterP,'租屋族':SP.voterP,'下班族':SP.voterP});
 /* ================= 關卡模板（9 列＝世界第 8-16 列；第 16 列為地面） =================
  圖塊：# 地面  > 洋流  ? 泡泡方塊  Q 金泡泡方塊  C 甘蔗方塊  B 磚  = 平台  t 違停小貨車  c 三角錐  h 火鍋熱區  M 捷運閘門
  物件：o g 泡泡  f F 假訊息  b 補給  L 燈塔／存檔旗  Z 斑馬線  S 鞭炮煙霧  P 海報  E 終點  N 需求 NPC  1-9 道具  H 舉牌粉撲  x 標籤貼紙
-       D 死貓布偶  V 剪輯影片  O 油飯店  r 一星評論雲  J 火鍋攤（蔣萬安）  Y 看板 */
+       D 死貓布偶  V 剪輯影片  O 油飯店  r 一星評論雲  J 火鍋攤（對手候選人）  Y 看板 */
 const TPL={
  start:["....................","....................","....................","....................","....................","..........o.o.o.....","....................","....................","####################"],
  flat:["....................","....................","....................","....................","....................","....o.o.o...........","....................","....................","####################"],
@@ -272,7 +272,7 @@ const LV=[
  ['n4a',0],['cur',0],['n4b',0],['enemy',0],['light',0],
  ['hotpot',1,[['hint',kb('火鍋熱區好燙：洋流和浪花都能幫它降溫')]]],['jiang',1],['n4c',1],['pit',1],['light',1],
  ['curpit',2],['n4d',2],['stairs',2],['hotpot',2],['enemy2',2],['light',2],
- ['billboard',3],['n4e',3],['cur',3,[['card','「川流不息」','— 蔣萬安（公開發言）']]],['n4f',3],['goal',3]]},
+ ['billboard',3],['n4e',3],['cur',3,[['card','「川流不息」','— 對手候選人（公開發言）']]],['n4f',3],['goal',3]]},
  {title:'市府廣場決戰',area:'信義・市政府前廣場',special:'boss',zones:[['信義・市府廣場','plaza']],npcs:[]},
 ];
 const SOLID='#>?QCuB=tcAhvm';
@@ -342,7 +342,7 @@ function newLevel(li){
     convoy:0,convoyOn:false,convoyHits:0,convoyEgg:false,trail:[],zone:0,posterEgg:false,bumps:[],inSmoke:false,smokeNote:0,waveCD:0,waveFlash:0,
     held:null,youth:0,peeled:0,labeled:0,checks:0,shopDone:0,persuaded:0,cooled:0,sauce:0,ov:null,mode:'run',hotCD:0,coolT:0,banner:2.6,wet:0,theme:null,sun:0});
   if(L.LD.special){G.mode='debate';G.p.x=84;G.deb={q:-1,ph:'intro',t:0,score:0,atk:0};
-    say('主持人','歡迎兩位候選人，今天我們以交叉詰問進行。',3.2);say('蔣萬安','「我只感受到滿滿的新潮流」',3,'公開發言');say('船員內心','不管什麼流，大家都是台北人。',2.8);
+    say('主持人','歡迎兩位候選人，今天我們以交叉詰問進行。',3.2);say('對手候選人','「我只感受到滿滿的新潮流」',3,'公開發言');say('船員內心','不管什麼流，大家都是台北人。',2.8);
     hint(kb('頂 A／B／C 方塊選出最好的追問（也可以按 1／2／3）','頂 A／B／C 方塊，或直接點選項'));}
   S.botT=0;
 }
@@ -492,8 +492,8 @@ function update(dt){
   for(const cl of G.clouds){if(!cl.dead){cl.t+=dt;cl.y=cl.by+Math.sin(cl.t*1.5)*3;}}
   for(const sh of G.shops){if(sh.done)continue;const mine=G.clouds.filter(c=>Math.abs(c.x-sh.x)<160);if(mine.length&&mine.every(c=>c.dead)){sh.done=1;G.shopDone=1;G.hp=3;addWave(15);SFX.badge();
     G.parts.push({x:sh.x,y:sh.y-30,vx:0,vy:-60,t:0,life:1.2,ico:'rice'});say('沈伯洋','「店家的牆不需變戰場」',3.2,'公開發言');toast('油飯店送上一碗油飯：救生圈全滿！','item',2.6);}}
-  // 火鍋攤（蔣萬安，只說公開發言）
-  for(const st of G.stalls){if(!st.said&&pcx>st.x-74){st.said=1;say('蔣萬安','「火鍋是有料的，醬料加酸也尊重」',3.8,'公開發言');say('沈伯洋','「洋流是溫暖的。」',2.8,'公開發言・節錄');G.sauce=1;
+  // 火鍋攤（對手候選人，只說公開發言）
+  for(const st of G.stalls){if(!st.said&&pcx>st.x-74){st.said=1;say('對手候選人','「火鍋是有料的，醬料加酸也尊重」',3.8,'公開發言');say('沈伯洋','「洋流是溫暖的。」',2.8,'公開發言・節錄');G.sauce=1;
     setTimeout(()=>{if(G)toast('獲得「尊重醬料」徽章：選舉有輸贏，台北只有一個','badge',3);},10);}}
   // 浪花
   for(const w of G.waves){const s=w.vx*dt;w.x+=s;w.dist+=Math.abs(s);
@@ -551,7 +551,7 @@ function updDebate(dt){const d=G.deb;d.t+=dt;
 }
 function nextQ(){const d=G.deb;d.q++;d.ph='ask';d.t=0;d.pick=null;G.story=[];G.cur=null;}
 function answer(slot){const d=G.deb;if(!d||d.ph!=='ask'||d.t<.4)return;const Q=QUIZ[d.q];d.ph='fb';d.t=0;d.pick=slot;G.story=[];G.cur=null;
-  if(slot===Q.best){d.score++;addWave(12);SFX.light();burst([35,85,135][slot],115,'y',14);say('主持人','很具體、可以檢驗的好問題。',1.6);say('蔣萬安','謝謝提問。',1.4);}
+  if(slot===Q.best){d.score++;addWave(12);SFX.light();burst([35,85,135][slot],115,'y',14);say('主持人','很具體、可以檢驗的好問題。',1.6);say('對手候選人','謝謝提問。',1.4);}
   else if(slot===Q.atk){d.atk++;SFX.hit();say('主持人','請回到政策本身。',2.6);}
   else if(slot<0){say('主持人','時間到，我們進入下一題。',2.6);}
   else{SFX.bonk();say('主持人','可以再問得更具體一點。',2.6);}}
@@ -765,7 +765,7 @@ function drawGoal(b,cx,gy,T){const g=G.LD.goal;
 function drawDebateBG(b,T){
   R(b,0,0,W,40,'D');R(b,0,40,W,2,'O');for(let i=0;i<9;i++)R(b,i*20+4,4,12,2,Math.floor(T*2+i)%2?'l':'y');
   R(b,20,8,140,26,'k');R(b,21,9,138,24,'o');
-  // 主持人（左）、蔣萬安講台（右）
+  // 主持人（左）、對手候選人講台（右）
   b.drawImage(SP.host,2,145);R(b,0,152,12,8,'n');R(b,0,152,12,2,'G');
   b.drawImage(SP.bodyChiang,165,137);R(b,160,146,20,14,'n');R(b,160,146,20,2,'l');R(b,166,150,8,4,'W');
   const d=G.deb;if(d&&d.ph==='ask'){const k=clamp(1-d.t/18,0,1);R(b,20,36,140,3,'k');R(b,20,36,Math.round(140*k),3,k<.3?'R':'l');}
@@ -883,7 +883,7 @@ function drawUIText(){
     if(d&&(d.ph==='ask'||d.ph==='fb')){const Q=QUIZ[d.q];Q.o.forEach((o,i)=>{const y=PY+48+i*14;const sel=d.ph==='fb'&&d.pick===i;const best=d.ph==='fb'&&i===Q.best;
       box(6,y-6,168,12,best?'g':sel?'G':'k',best?'W':'c');T_('ABC'[i],12,y+.5,6.5,'l','center');T_(o,19,y+.5,5.8,'W','left',{stroke:false,w:500});});
       ['A','B','C'].forEach((l,i)=>T_(l,[35,85,135][i],PY+125.5,6.5,'W','center',{sc:PAL.O}));}
-    T_('主持人',7,PY+141,4.2,'W','center');T_('蔣萬安',170,PY+132,4.2,'W','center');}
+    T_('主持人',7,PY+141,4.2,'W','center');T_('對手候選人',168,PY+132,3.6,'W','center');}
   if(g.mode==='boss'&&!g.boss.done){const s=.55+.45*(g.boss.hp/4);T_('再說啦～',140,PY+60+30*s,7,'W','center',{sc:PAL.G});for(const s2 of g.boss.shots)T_('都一樣',s2.x,PY+s2.y,3.8,'k','center',{stroke:false});}
   if(g.crowd){const t=g.endT;let n=t<1.5?Math.floor(t/1.5*2):t<3.2?2:t<4.2?Math.floor(2+(120000-2)*((t-3.2)/1)):120000;
     box(30,PY+18,120,36,'k','o');T_('現場人數',90,PY+26,5.5,'l','center',{stroke:false});T_(n.toLocaleString('en-US')+(t>=4.2?'+':''),90,PY+40,11,'W','center');
@@ -951,7 +951,7 @@ function uiCut(){const c=CUT,t=c.t;
   if(c.i===4&&t>8){ if(t<18){T_('11/28（六）投票小提醒',90,46,8.5,'l','center');
       ['投票時間 08:00–16:00','回「戶籍地」的投票所投票','帶國民身分證＋印章','（沒帶印章可簽名或按指印）','手機關機，圈選後不拍照、不出示','不穿戴候選人或政黨標誌','（包含洋流應援物）'].forEach((s,i)=>T_(s,90,66+i*14,6.6,i%3===0?'W':'w','center',{stroke:false,w:i===0||i===1||i===2?700:500}));}
     else{T_('製作名單',90,46,8.5,'l','center');
-      ['企劃・程式：洋流大冒險 試玩小組','像素美術與音效：以程式即時繪製（試玩原型）','關卡靈感：沈伯洋團隊公開行程與發言','對手台詞：僅引用蔣萬安公開發言','特別感謝：每一位推起洋流的船員','本作為試玩原型，非正式宣傳品'].forEach((s,i)=>T_(s,90,68+i*16,6,'W','center',{stroke:false,w:500}));}}
+      ['企劃・程式：洋流大冒險 試玩小組','像素美術與音效：以程式即時繪製（試玩原型）','關卡靈感：沈伯洋團隊公開行程與發言','對手台詞：僅引用對手候選人公開發言','特別感謝：每一位推起洋流的船員','本作為試玩原型，非正式宣傳品'].forEach((s,i)=>T_(s,90,68+i*16,6,'W','center',{stroke:false,w:500}));}}
   if(ln){box(4,222,172,64,'k','O');ctx.drawImage(PORTRAIT[ln[1]]||SP.sys,10,230,26,26);T_(ln[1],42,232,6,ln[1]==='提示'?'c':'l','left',{stroke:false});
     const shown=ln[2].slice(0,Math.floor((t-ln[0])*24));wrap(shown,128,7).slice(0,4).forEach((s,i)=>T_(s,42,245+i*10,7,'W','left',{stroke:false,w:500}));}
   const bar=clamp(t/c.d.dur,0,1);ctx.fillStyle=PAL.D;ctx.fillRect(10,296,160,2);ctx.fillStyle=PAL.o;ctx.fillRect(10,296,160*bar,2);
